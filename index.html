@@ -1,0 +1,606 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>projeto</title>
+<style>
+body{
+  background:#f0f0f0;
+  text-align:center;
+}
+h1{
+  color:blue;
+}
+  
+</style>
+</head>
+<body>
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>PDF Study Slider</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family:Arial, Helvetica, sans-serif;
+    background:#0f172a;
+    color:white;
+    height:100vh;
+    display:flex;
+    overflow:hidden;
+}
+
+/* SIDEBAR */
+
+.sidebar{
+    width:300px;
+    background:#111827;
+    border-right:1px solid #1e293b;
+    display:flex;
+    flex-direction:column;
+    padding:15px;
+    overflow:auto;
+    transition:0.3s;
+}
+
+.sidebar.hidden{
+    width:0;
+    padding:0;
+    overflow:hidden;
+    border:none;
+}
+
+.sidebar h2{
+    margin-bottom:15px;
+    font-size:20px;
+}
+
+.upload-box{
+    margin-bottom:20px;
+}
+
+input[type="file"]{
+    width:100%;
+    padding:10px;
+    background:#1e293b;
+    color:white;
+    border:none;
+    border-radius:10px;
+}
+
+.pdf-list{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+.pdf-item{
+    background:#1e293b;
+    padding:12px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:0.2s;
+    border:2px solid transparent;
+    word-break:break-word;
+}
+
+.pdf-item:hover{
+    background:#334155;
+}
+
+.pdf-item.active{
+    border:2px solid #2563eb;
+    background:#1d4ed8;
+}
+
+/* MAIN */
+
+.main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+}
+
+.topbar{
+    background:#111827;
+    padding:15px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    border-bottom:1px solid #1e293b;
+}
+
+.controls{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+button{
+    background:#2563eb;
+    color:white;
+    border:none;
+    padding:10px 15px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+button:hover{
+    background:#1d4ed8;
+}
+
+.viewer-container{
+    flex:1;
+    overflow:auto;
+    display:flex;
+    justify-content:center;
+    align-items:flex-start;
+    padding:20px;
+    transition:0.3s;
+}
+
+canvas{
+    background:white;
+    border-radius:10px;
+    box-shadow:0 0 20px rgba(0,0,0,0.5);
+    margin-bottom:30px;
+}
+
+.page-info{
+    background:#1e293b;
+    padding:10px 15px;
+    border-radius:10px;
+}
+
+.loader{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.7);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    z-index:999;
+    font-size:25px;
+}
+
+.empty{
+    opacity:0.6;
+    text-align:center;
+    margin-top:30px;
+}
+
+.fullscreen-mode .topbar{
+    display:none;
+}
+
+.fullscreen-mode .viewer-container{
+    padding:0;
+}
+
+.fullscreen-mode canvas{
+    border-radius:0;
+    margin:0;
+}
+
+</style>
+</head>
+<body>
+
+<div class="loader" id="loader">
+    Carregando PDF...
+</div>
+
+<!-- SIDEBAR -->
+
+<div class="sidebar" id="sidebar">
+
+    <h2>📚 Seus PDFs</h2>
+
+    <div class="upload-box">
+        <input type="file" id="pdf-upload" accept="application/pdf" multiple>
+    </div>
+
+    <div class="pdf-list" id="pdf-list">
+
+        <div class="empty">
+            Nenhum PDF carregado
+        </div>
+
+    </div>
+
+</div>
+
+<!-- MAIN -->
+
+<div class="main" id="main">
+
+    <div class="topbar">
+
+        <div class="controls">
+
+            <button id="toggle-sidebar">📂 PDFs</button>
+
+            <button id="prev-page">⬅ Página</button>
+
+            <button id="next-page">Página ➡</button>
+
+            <button id="prev-pdf">⬆ PDF</button>
+
+            <button id="next-pdf">⬇ PDF</button>
+
+            <button id="zoom-out">➖ Zoom</button>
+
+            <button id="zoom-in">➕ Zoom</button>
+
+            <button id="fullscreen-btn">🖥 Tela Cheia</button>
+
+        </div>
+
+        <div class="page-info" id="page-info">
+            Página 0 / 0
+        </div>
+
+    </div>
+
+    <div class="viewer-container" id="viewer-container">
+
+        <canvas id="pdf-render"></canvas>
+
+    </div>
+
+</div>
+
+<script>
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const upload = document.getElementById('pdf-upload');
+const pdfList = document.getElementById('pdf-list');
+
+const canvas = document.getElementById('pdf-render');
+const ctx = canvas.getContext('2d');
+
+const pageInfo = document.getElementById('page-info');
+const loader = document.getElementById('loader');
+
+const sidebar = document.getElementById('sidebar');
+const main = document.getElementById('main');
+
+const prevPageBtn = document.getElementById('prev-page');
+const nextPageBtn = document.getElementById('next-page');
+
+const prevPdfBtn = document.getElementById('prev-pdf');
+const nextPdfBtn = document.getElementById('next-pdf');
+
+const zoomInBtn = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+
+const toggleSidebarBtn =
+document.getElementById('toggle-sidebar');
+
+const fullscreenBtn =
+document.getElementById('fullscreen-btn');
+
+let pdfFiles = [];
+let currentPdfIndex = 0;
+
+let pdfDoc = null;
+let currentPage = 1;
+let scale = 1.3;
+
+function showLoader(){
+    loader.style.display = 'flex';
+}
+
+function hideLoader(){
+    loader.style.display = 'none';
+}
+
+async function loadPDF(index){
+
+    if(index < 0 || index >= pdfFiles.length) return;
+
+    currentPdfIndex = index;
+
+    showLoader();
+
+    const file = pdfFiles[index];
+
+    const arrayBuffer = await file.arrayBuffer();
+
+    pdfDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+
+    currentPage = 1;
+
+    renderPDFList();
+
+    renderPage(currentPage);
+
+    hideLoader();
+}
+
+async function renderPage(pageNumber){
+
+    if(!pdfDoc) return;
+
+    showLoader();
+
+    const page = await pdfDoc.getPage(pageNumber);
+
+    const container =
+    document.getElementById('viewer-container');
+
+    const containerWidth =
+    container.clientWidth - 40;
+
+    const viewport =
+    page.getViewport({ scale:1 });
+
+    const autoScale =
+    containerWidth / viewport.width;
+
+    const finalScale =
+    autoScale * scale;
+
+    const scaledViewport =
+    page.getViewport({ scale:finalScale });
+
+    canvas.width = scaledViewport.width;
+    canvas.height = scaledViewport.height;
+
+    await page.render({
+        canvasContext:ctx,
+        viewport:scaledViewport
+    }).promise;
+
+    pageInfo.innerText =
+    `PDF ${currentPdfIndex + 1}/${pdfFiles.length}
+     | Página ${currentPage}/${pdfDoc.numPages}`;
+
+    hideLoader();
+}
+
+function renderPDFList(){
+
+    pdfList.innerHTML = '';
+
+    pdfFiles.forEach((file, index)=>{
+
+        const div = document.createElement('div');
+
+        div.className = 'pdf-item';
+
+        if(index === currentPdfIndex){
+            div.classList.add('active');
+        }
+
+        div.innerText =
+        `${index + 1}. ${file.name}`;
+
+        div.onclick = ()=>{
+            loadPDF(index);
+        };
+
+        pdfList.appendChild(div);
+    });
+}
+
+/* UPLOAD */
+
+upload.addEventListener('change', async(e)=>{
+
+    const files =
+    Array.from(e.target.files);
+
+    const validFiles =
+    files.filter(file =>
+        file.type === 'application/pdf'
+    );
+
+    if(validFiles.length === 0){
+        alert('Nenhum PDF válido.');
+        return;
+    }
+
+    pdfFiles = validFiles;
+
+    renderPDFList();
+
+    loadPDF(0);
+});
+
+/* PAGE */
+
+prevPageBtn.addEventListener('click', ()=>{
+
+    if(!pdfDoc) return;
+
+    if(currentPage <= 1) return;
+
+    currentPage--;
+
+    renderPage(currentPage);
+});
+
+nextPageBtn.addEventListener('click', ()=>{
+
+    if(!pdfDoc) return;
+
+    if(currentPage >= pdfDoc.numPages) return;
+
+    currentPage++;
+
+    renderPage(currentPage);
+});
+
+/* PDF */
+
+prevPdfBtn.addEventListener('click', ()=>{
+
+    if(currentPdfIndex <= 0) return;
+
+    loadPDF(currentPdfIndex - 1);
+});
+
+nextPdfBtn.addEventListener('click', ()=>{
+
+    if(currentPdfIndex >= pdfFiles.length - 1) return;
+
+    loadPDF(currentPdfIndex + 1);
+});
+
+/* ZOOM */
+
+zoomInBtn.addEventListener('click', ()=>{
+
+    scale += 0.1;
+
+    renderPage(currentPage);
+});
+
+zoomOutBtn.addEventListener('click', ()=>{
+
+    if(scale <= 0.5) return;
+
+    scale -= 0.1;
+
+    renderPage(currentPage);
+});
+
+/* MOSTRAR / ESCONDER SIDEBAR */
+
+toggleSidebarBtn.addEventListener('click', ()=>{
+
+    sidebar.classList.toggle('hidden');
+
+    setTimeout(()=>{
+
+        if(pdfDoc){
+
+            renderPage(currentPage);
+        }
+
+    },300);
+});
+
+/* TELA CHEIA */
+
+fullscreenBtn.addEventListener('click', async()=>{
+
+    if(!document.fullscreenElement){
+
+        await document.documentElement.requestFullscreen();
+
+        document.body.classList.add('fullscreen-mode');
+
+        sidebar.classList.add('hidden');
+
+    }else{
+
+        await document.exitFullscreen();
+
+        document.body.classList.remove('fullscreen-mode');
+
+        sidebar.classList.remove('hidden');
+    }
+
+    setTimeout(()=>{
+
+        if(pdfDoc){
+
+            renderPage(currentPage);
+        }
+
+    },300);
+});
+
+/* TECLADO */
+
+document.addEventListener('keydown', (e)=>{
+
+    if(!pdfDoc) return;
+
+    if(e.key === 'ArrowRight'){
+
+        if(currentPage < pdfDoc.numPages){
+
+            currentPage++;
+
+            renderPage(currentPage);
+        }
+    }
+
+    if(e.key === 'ArrowLeft'){
+
+        if(currentPage > 1){
+
+            currentPage--;
+
+            renderPage(currentPage);
+        }
+    }
+
+    if(e.key === 'ArrowUp'){
+
+        if(currentPdfIndex > 0){
+
+            loadPDF(currentPdfIndex - 1);
+        }
+    }
+
+    if(e.key === 'ArrowDown'){
+
+        if(currentPdfIndex < pdfFiles.length - 1){
+
+            loadPDF(currentPdfIndex + 1);
+        }
+    }
+
+    if(e.key.toLowerCase() === 'f'){
+
+        fullscreenBtn.click();
+    }
+});
+
+/* RESPONSIVO */
+
+window.addEventListener('resize', ()=>{
+
+    if(pdfDoc){
+
+        renderPage(currentPage);
+    }
+});
+
+</script>
+
+</body>
+</html>
+
+<script>
+console.log("Funcionando!");
+  
+</script>
+
+</body>
+</html>
+  
